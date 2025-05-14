@@ -174,103 +174,137 @@ async function callDartApi(endpoint: string, params: Record<string, string>): Pr
  */
 async function getCorpCodeByName(corp_name: string): Promise<[string, string]> {
 	try {
-		// API 엔드포인트 호출
-		const response = await axios.get(`${BASE_URL}/corpCode.xml`, {
-			params: {
-				crtfc_key: API_KEY
-			},
-			responseType: 'arraybuffer'
-		});
-
-		if (response.status !== 200) {
-			return ["", `API 요청 실패: HTTP 상태 코드 ${response.status}`];
-		}
-
-		// ZIP 파일 처리
-		const zip = new JSZip();
-		const zipFile = await zip.loadAsync(response.data);
+		// API 엔드포인트 호출 (최대 3회 재시도)
+		let attempt = 0;
+		const maxAttempts = 3;
+		let lastError: Error | null = null;
 		
-		// CORPCODE.xml 파일 추출
-		const xmlFile = zipFile.file('CORPCODE.xml');
-		if (!xmlFile) {
-			return ["", "ZIP 파일에서 CORPCODE.xml을 찾을 수 없습니다."];
-		}
-		
-		const xmlContent = await xmlFile.async('string');
-		
-		// XML 파싱
-		try {
-			const parser = new XMLParser({
-				ignoreAttributes: false,
-				attributeNamePrefix: "",
-				textNodeName: "text",
-				isArray: (name) => name === "list", // list 태그는 항상 배열로 처리
-				parseAttributeValue: false // 속성값을 문자열 그대로 유지
-			});
-			
-			const result = parser.parse(xmlContent);
-			
-			// XML 구조 검사 및 회사 목록 추출
-			if (!result || !result.result) {
-				console.error("XML 파싱 결과에서 result 객체를 찾을 수 없습니다:", result);
-				return ["", "XML 파싱 결과에서 result 객체를 찾을 수 없습니다."];
-			}
-			
-			if (!result.result.list) {
-				console.error("XML 파싱 결과에서 회사 목록을 찾을 수 없습니다:", result.result);
-				return ["", "XML 파싱 결과에서 회사 목록을 찾을 수 없습니다."];
-			}
-			
-			// companies는 항상 배열로 처리 (isArray 설정으로 필요 없을 수 있지만 안전을 위해 유지)
-			const companies = Array.isArray(result.result.list) ? result.result.list : [result.result.list];
-			
-			if (companies.length === 0) {
-				console.error("XML 파싱 결과에서 회사 목록이 비어 있습니다.");
-				return ["", "XML 파싱 결과에서 회사 목록이 비어 있습니다."];
-			}
-			
-			console.log(`총 ${companies.length}개 회사 정보를 읽었습니다.`);
-			
-			// 검색어를 포함하는 모든 회사 찾기
-			const matches: Array<{name: string, code: string, score: number}> = [];
-			
-			for (const company of companies) {
-				// 회사 객체가 유효한지 확인
-				if (!company || typeof company !== 'object') continue;
-				if (!company.corp_name || !company.corp_code) continue;
+		while (attempt < maxAttempts) {
+			try {
+				attempt++;
+				console.log(`회사 코드 조회 시도 ${attempt}/${maxAttempts}...`);
 				
-				const name = company.corp_name;
+				const response = await axios.get(`${BASE_URL}/corpCode.xml`, {
+					params: {
+						crtfc_key: API_KEY
+					},
+					responseType: 'arraybuffer',
+					maxRedirects: 0, // 리다이렉트 비활성화
+					validateStatus: (status) => {
+						return status < 500; // 500 미만의 상태 코드는 에러로 처리하지 않음
+					}
+				});
+
+				if (response.status !== 200) {
+					throw new Error(`API 요청 실패: HTTP 상태 코드 ${response.status}`);
+				}
+
+				// ZIP 파일 처리
+				const zip = new JSZip();
+				const zipFile = await zip.loadAsync(response.data);
 				
-				// 모든 회사를 검색 대상으로 포함 (stock_code 필터링 제거)
-				if (name && name.includes(corp_name)) {
-					// 일치도 점수 계산 (낮을수록 더 정확히 일치)
-					let score = 0;
-					if (name !== corp_name) {
-						score += Math.abs(name.length - corp_name.length);
-						if (!name.startsWith(corp_name)) {
-							score += 10;
+				// CORPCODE.xml 파일 추출
+				const xmlFile = zipFile.file('CORPCODE.xml');
+				if (!xmlFile) {
+					throw new Error("ZIP 파일에서 CORPCODE.xml을 찾을 수 없습니다.");
+				}
+				
+				const xmlContent = await xmlFile.async('string');
+				
+				// XML 파싱
+				try {
+					const parser = new XMLParser({
+						ignoreAttributes: false,
+						attributeNamePrefix: "",
+						textNodeName: "text",
+						isArray: (name) => name === "list", // list 태그는 항상 배열로 처리
+						parseAttributeValue: false // 속성값을 문자열 그대로 유지
+					});
+					
+					const result = parser.parse(xmlContent);
+					
+					// XML 구조 검사 및 회사 목록 추출
+					if (!result || !result.result) {
+						console.error("XML 파싱 결과에서 result 객체를 찾을 수 없습니다:", result);
+						return ["", "XML 파싱 결과에서 result 객체를 찾을 수 없습니다."];
+					}
+					
+					if (!result.result.list) {
+						console.error("XML 파싱 결과에서 회사 목록을 찾을 수 없습니다:", result.result);
+						return ["", "XML 파싱 결과에서 회사 목록을 찾을 수 없습니다."];
+					}
+					
+					// companies는 항상 배열로 처리 (isArray 설정으로 필요 없을 수 있지만 안전을 위해 유지)
+					const companies = Array.isArray(result.result.list) ? result.result.list : [result.result.list];
+					
+					if (companies.length === 0) {
+						console.error("XML 파싱 결과에서 회사 목록이 비어 있습니다.");
+						return ["", "XML 파싱 결과에서 회사 목록이 비어 있습니다."];
+					}
+					
+					console.log(`총 ${companies.length}개 회사 정보를 읽었습니다.`);
+					
+					// 검색어를 포함하는 모든 회사 찾기
+					const matches: Array<{name: string, code: string, score: number}> = [];
+					
+					for (const company of companies) {
+						// 회사 객체가 유효한지 확인
+						if (!company || typeof company !== 'object') continue;
+						if (!company.corp_name || !company.corp_code) continue;
+						
+						const name = company.corp_name;
+						
+						// 모든 회사를 검색 대상으로 포함 (stock_code 필터링 제거)
+						if (name && name.includes(corp_name)) {
+							// 일치도 점수 계산 (낮을수록 더 정확히 일치)
+							let score = 0;
+							if (name !== corp_name) {
+								score += Math.abs(name.length - corp_name.length);
+								if (!name.startsWith(corp_name)) {
+									score += 10;
+								}
+							}
+							
+							const code = company.corp_code;
+							matches.push({ name, code, score });
 						}
 					}
 					
-					const code = company.corp_code;
-					matches.push({ name, code, score });
+					// 일치하는 회사가 없는 경우
+					if (matches.length === 0) {
+						return ["", `'${corp_name}' 회사를 찾을 수 없습니다.`];
+					}
+					
+					console.log(`'${corp_name}' 검색어로 ${matches.length}개 회사를 찾았습니다.`);
+					
+					// 일치도 점수가 가장 낮은 (가장 일치하는) 회사 반환
+					matches.sort((a, b) => a.score - b.score);
+					return [matches[0].code, matches[0].name];
+				} catch (parseError) {
+					console.error("XML 파싱 중 오류 발생:", parseError);
+					return ["", `XML 파싱 중 오류 발생: ${parseError instanceof Error ? parseError.message : String(parseError)}`];
 				}
+				
+				// 이 부분은 실행되지 않지만 TypeScript 컴파일러를 위해 추가
+				return ["", "처리되지 않은 경로"];
+			} catch (error) {
+				lastError = error instanceof Error ? error : new Error(String(error));
+				console.error(`회사 코드 조회 중 오류 발생 (시도 ${attempt}/${maxAttempts}): ${lastError.message}`);
+				
+				if (attempt < maxAttempts) {
+					// 잠시 기다린 후 재시도
+					await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // 지수 백오프
+					console.log(`재시도 중... (${attempt}/${maxAttempts})`);
+					continue;
+				}
+				
+				// 모든 시도 실패
+				return ["", `회사 코드 조회 중 오류 발생: ${lastError.message}`];
 			}
-			
-			// 일치하는 회사가 없는 경우
-			if (matches.length === 0) {
-				return ["", `'${corp_name}' 회사를 찾을 수 없습니다.`];
-			}
-			
-			console.log(`'${corp_name}' 검색어로 ${matches.length}개 회사를 찾았습니다.`);
-			
-			// 일치도 점수가 가장 낮은 (가장 일치하는) 회사 반환
-			matches.sort((a, b) => a.score - b.score);
-			return [matches[0].code, matches[0].name];
-		} catch (parseError) {
-			console.error("XML 파싱 중 오류 발생:", parseError);
-			return ["", `XML 파싱 중 오류 발생: ${parseError instanceof Error ? parseError.message : String(parseError)}`];
 		}
+		
+		// 이 부분은 실행되지 않지만 TypeScript 컴파일러를 위해 추가
+		return ["", "모든 시도 실패"];
 	} catch (error) {
 		console.error("회사 코드 조회 중 오류 발생:", error);
 		if (error instanceof Error) {

@@ -23278,74 +23278,99 @@ var DETAILED_TAGS = {
 var chat_guideline = "\n* \uC81C\uACF5\uB41C \uACF5\uC2DC\uC815\uBCF4\uB4E4\uC740 \uBD84\uAE30, \uBC18\uAE30, \uC5F0\uAC04\uC774 \uC11E\uC5EC\uC788\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \n\uC0AC\uC6A9\uC790\uAC00 \uD2B9\uBCC4\uD788 \uC5F0\uAC04\uC774\uB098 \uBC18\uAE30\uB370\uC774\uD130\uB9CC\uC744 \uC6D0\uD558\uB294\uAC8C \uC544\uB2C8\uB77C\uBA74, \uC8FC\uC5B4\uC9C4 \uB370\uC774\uD130\uB97C \uC801\uB2F9\uD788 \uAC00\uACF5\uD558\uC5EC \uBD84\uAE30\uBCC4\uB85C \uC0AC\uC6A9\uC790\uC5D0\uAC8C \uC81C\uACF5\uD558\uC138\uC694.";
 async function getCorpCodeByName(corp_name) {
   try {
-    const response = await axios_default.get(`${BASE_URL}/corpCode.xml`, {
-      params: {
-        crtfc_key: API_KEY
-      },
-      responseType: "arraybuffer"
-    });
-    if (response.status !== 200) {
-      return ["", `API \uC694\uCCAD \uC2E4\uD328: HTTP \uC0C1\uD0DC \uCF54\uB4DC ${response.status}`];
-    }
-    const zip = new import_jszip.default();
-    const zipFile = await zip.loadAsync(response.data);
-    const xmlFile = zipFile.file("CORPCODE.xml");
-    if (!xmlFile) {
-      return ["", "ZIP \uD30C\uC77C\uC5D0\uC11C CORPCODE.xml\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."];
-    }
-    const xmlContent = await xmlFile.async("string");
-    try {
-      const parser = new XMLParser({
-        ignoreAttributes: false,
-        attributeNamePrefix: "",
-        textNodeName: "text",
-        isArray: /* @__PURE__ */ __name((name17) => name17 === "list", "isArray"),
-        // list 태그는 항상 배열로 처리
-        parseAttributeValue: false
-        // 속성값을 문자열 그대로 유지
-      });
-      const result = parser.parse(xmlContent);
-      if (!result || !result.result) {
-        console.error("XML \uD30C\uC2F1 \uACB0\uACFC\uC5D0\uC11C result \uAC1D\uCCB4\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4:", result);
-        return ["", "XML \uD30C\uC2F1 \uACB0\uACFC\uC5D0\uC11C result \uAC1D\uCCB4\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."];
-      }
-      if (!result.result.list) {
-        console.error("XML \uD30C\uC2F1 \uACB0\uACFC\uC5D0\uC11C \uD68C\uC0AC \uBAA9\uB85D\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4:", result.result);
-        return ["", "XML \uD30C\uC2F1 \uACB0\uACFC\uC5D0\uC11C \uD68C\uC0AC \uBAA9\uB85D\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."];
-      }
-      const companies = Array.isArray(result.result.list) ? result.result.list : [result.result.list];
-      if (companies.length === 0) {
-        console.error("XML \uD30C\uC2F1 \uACB0\uACFC\uC5D0\uC11C \uD68C\uC0AC \uBAA9\uB85D\uC774 \uBE44\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.");
-        return ["", "XML \uD30C\uC2F1 \uACB0\uACFC\uC5D0\uC11C \uD68C\uC0AC \uBAA9\uB85D\uC774 \uBE44\uC5B4 \uC788\uC2B5\uB2C8\uB2E4."];
-      }
-      console.log(`\uCD1D ${companies.length}\uAC1C \uD68C\uC0AC \uC815\uBCF4\uB97C \uC77D\uC5C8\uC2B5\uB2C8\uB2E4.`);
-      const matches = [];
-      for (const company of companies) {
-        if (!company || typeof company !== "object") continue;
-        if (!company.corp_name || !company.corp_code) continue;
-        const name17 = company.corp_name;
-        if (name17 && name17.includes(corp_name)) {
-          let score = 0;
-          if (name17 !== corp_name) {
-            score += Math.abs(name17.length - corp_name.length);
-            if (!name17.startsWith(corp_name)) {
-              score += 10;
+    let attempt = 0;
+    const maxAttempts = 3;
+    let lastError = null;
+    while (attempt < maxAttempts) {
+      try {
+        attempt++;
+        console.log(`\uD68C\uC0AC \uCF54\uB4DC \uC870\uD68C \uC2DC\uB3C4 ${attempt}/${maxAttempts}...`);
+        const response = await axios_default.get(`${BASE_URL}/corpCode.xml`, {
+          params: {
+            crtfc_key: API_KEY
+          },
+          responseType: "arraybuffer",
+          maxRedirects: 0,
+          // 리다이렉트 비활성화
+          validateStatus: /* @__PURE__ */ __name((status) => {
+            return status < 500;
+          }, "validateStatus")
+        });
+        if (response.status !== 200) {
+          throw new Error(`API \uC694\uCCAD \uC2E4\uD328: HTTP \uC0C1\uD0DC \uCF54\uB4DC ${response.status}`);
+        }
+        const zip = new import_jszip.default();
+        const zipFile = await zip.loadAsync(response.data);
+        const xmlFile = zipFile.file("CORPCODE.xml");
+        if (!xmlFile) {
+          throw new Error("ZIP \uD30C\uC77C\uC5D0\uC11C CORPCODE.xml\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.");
+        }
+        const xmlContent = await xmlFile.async("string");
+        try {
+          const parser = new XMLParser({
+            ignoreAttributes: false,
+            attributeNamePrefix: "",
+            textNodeName: "text",
+            isArray: /* @__PURE__ */ __name((name17) => name17 === "list", "isArray"),
+            // list 태그는 항상 배열로 처리
+            parseAttributeValue: false
+            // 속성값을 문자열 그대로 유지
+          });
+          const result = parser.parse(xmlContent);
+          if (!result || !result.result) {
+            console.error("XML \uD30C\uC2F1 \uACB0\uACFC\uC5D0\uC11C result \uAC1D\uCCB4\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4:", result);
+            return ["", "XML \uD30C\uC2F1 \uACB0\uACFC\uC5D0\uC11C result \uAC1D\uCCB4\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."];
+          }
+          if (!result.result.list) {
+            console.error("XML \uD30C\uC2F1 \uACB0\uACFC\uC5D0\uC11C \uD68C\uC0AC \uBAA9\uB85D\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4:", result.result);
+            return ["", "XML \uD30C\uC2F1 \uACB0\uACFC\uC5D0\uC11C \uD68C\uC0AC \uBAA9\uB85D\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."];
+          }
+          const companies = Array.isArray(result.result.list) ? result.result.list : [result.result.list];
+          if (companies.length === 0) {
+            console.error("XML \uD30C\uC2F1 \uACB0\uACFC\uC5D0\uC11C \uD68C\uC0AC \uBAA9\uB85D\uC774 \uBE44\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.");
+            return ["", "XML \uD30C\uC2F1 \uACB0\uACFC\uC5D0\uC11C \uD68C\uC0AC \uBAA9\uB85D\uC774 \uBE44\uC5B4 \uC788\uC2B5\uB2C8\uB2E4."];
+          }
+          console.log(`\uCD1D ${companies.length}\uAC1C \uD68C\uC0AC \uC815\uBCF4\uB97C \uC77D\uC5C8\uC2B5\uB2C8\uB2E4.`);
+          const matches = [];
+          for (const company of companies) {
+            if (!company || typeof company !== "object") continue;
+            if (!company.corp_name || !company.corp_code) continue;
+            const name17 = company.corp_name;
+            if (name17 && name17.includes(corp_name)) {
+              let score = 0;
+              if (name17 !== corp_name) {
+                score += Math.abs(name17.length - corp_name.length);
+                if (!name17.startsWith(corp_name)) {
+                  score += 10;
+                }
+              }
+              const code = company.corp_code;
+              matches.push({ name: name17, code, score });
             }
           }
-          const code = company.corp_code;
-          matches.push({ name: name17, code, score });
+          if (matches.length === 0) {
+            return ["", `'${corp_name}' \uD68C\uC0AC\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.`];
+          }
+          console.log(`'${corp_name}' \uAC80\uC0C9\uC5B4\uB85C ${matches.length}\uAC1C \uD68C\uC0AC\uB97C \uCC3E\uC558\uC2B5\uB2C8\uB2E4.`);
+          matches.sort((a, b) => a.score - b.score);
+          return [matches[0].code, matches[0].name];
+        } catch (parseError) {
+          console.error("XML \uD30C\uC2F1 \uC911 \uC624\uB958 \uBC1C\uC0DD:", parseError);
+          return ["", `XML \uD30C\uC2F1 \uC911 \uC624\uB958 \uBC1C\uC0DD: ${parseError instanceof Error ? parseError.message : String(parseError)}`];
         }
+        return ["", "\uCC98\uB9AC\uB418\uC9C0 \uC54A\uC740 \uACBD\uB85C"];
+      } catch (error3) {
+        lastError = error3 instanceof Error ? error3 : new Error(String(error3));
+        console.error(`\uD68C\uC0AC \uCF54\uB4DC \uC870\uD68C \uC911 \uC624\uB958 \uBC1C\uC0DD (\uC2DC\uB3C4 ${attempt}/${maxAttempts}): ${lastError.message}`);
+        if (attempt < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 1e3 * attempt));
+          console.log(`\uC7AC\uC2DC\uB3C4 \uC911... (${attempt}/${maxAttempts})`);
+          continue;
+        }
+        return ["", `\uD68C\uC0AC \uCF54\uB4DC \uC870\uD68C \uC911 \uC624\uB958 \uBC1C\uC0DD: ${lastError.message}`];
       }
-      if (matches.length === 0) {
-        return ["", `'${corp_name}' \uD68C\uC0AC\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.`];
-      }
-      console.log(`'${corp_name}' \uAC80\uC0C9\uC5B4\uB85C ${matches.length}\uAC1C \uD68C\uC0AC\uB97C \uCC3E\uC558\uC2B5\uB2C8\uB2E4.`);
-      matches.sort((a, b) => a.score - b.score);
-      return [matches[0].code, matches[0].name];
-    } catch (parseError) {
-      console.error("XML \uD30C\uC2F1 \uC911 \uC624\uB958 \uBC1C\uC0DD:", parseError);
-      return ["", `XML \uD30C\uC2F1 \uC911 \uC624\uB958 \uBC1C\uC0DD: ${parseError instanceof Error ? parseError.message : String(parseError)}`];
     }
+    return ["", "\uBAA8\uB4E0 \uC2DC\uB3C4 \uC2E4\uD328"];
   } catch (error3) {
     console.error("\uD68C\uC0AC \uCF54\uB4DC \uC870\uD68C \uC911 \uC624\uB958 \uBC1C\uC0DD:", error3);
     if (error3 instanceof Error) {
