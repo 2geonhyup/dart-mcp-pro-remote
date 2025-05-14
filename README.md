@@ -1,50 +1,105 @@
-# Building a Remote MCP Server on Cloudflare (Without Auth)
+# DART MCP 서버
 
-This example allows you to deploy a remote MCP server that doesn't require authentication on Cloudflare Workers. 
+금융감독원 DART 공시 시스템 데이터를 활용하여 기업 재무정보를 제공하는 Model Context Protocol(MCP) 서버입니다.
 
-## Get started: 
+## 주요 기능
 
-[![Deploy to Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/ai/tree/main/demos/remote-mcp-authless)
+- 회사의 주요 재무 정보 검색 (`search_disclosure`)
+- 회사의 세부적인 재무 정보 제공 (`search_detailed_financial_data`)
+- 회사의 사업 관련 현황 정보 제공 (`search_business_information`)
+- JSON API를 통한 재무 정보 검색 (`search_json_financial_data`)
+- 현재 날짜 반환 (`get_current_date`)
 
-This will deploy your MCP server to a URL like: `remote-mcp-server-authless.<your-account>.workers.dev/sse`
+## 설치 방법
 
-Alternatively, you can use the command line below to get the remote MCP Server created on your local machine:
-```bash
-npm create cloudflare@latest -- my-mcp-server --template=cloudflare/ai/demos/remote-mcp-authless
+1. 필요한 패키지 설치
+   ```bash
+   npm install dotenv fast-xml-parser xml2js jszip axios zod @modelcontextprotocol/sdk
+   ```
+
+2. 환경 변수 설정
+   - 프로젝트 루트 디렉토리에 `.env` 파일을 생성하고 다음 내용을 추가합니다:
+   ```
+   DART_API_KEY=your_api_key_here
+   ```
+   - DART API 키는 [DART OpenAPI](https://opendart.fss.or.kr) 사이트에서 발급받을 수 있습니다.
+
+## 사용 방법
+
+```typescript
+// 서버 실행
+import { DartMCP } from './src/index';
+
+const agent = new DartMCP();
+agent.init();
 ```
 
-## Customizing your MCP Server
+## API 도구
 
-To add your own [tools](https://developers.cloudflare.com/agents/model-context-protocol/tools/) to the MCP server, define each tool inside the `init()` method of `src/index.ts` using `this.server.tool(...)`. 
+### 1. 현재 날짜 조회
 
-## Connect to Cloudflare AI Playground
+현재 날짜를 YYYYMMDD 형식으로 반환합니다.
 
-You can connect to your MCP server from the Cloudflare AI Playground, which is a remote MCP client:
-
-1. Go to https://playground.ai.cloudflare.com/
-2. Enter your deployed MCP server URL (`remote-mcp-server-authless.<your-account>.workers.dev/sse`)
-3. You can now use your MCP tools directly from the playground!
-
-## Connect Claude Desktop to your MCP server
-
-You can also connect to your remote MCP server from local MCP clients, by using the [mcp-remote proxy](https://www.npmjs.com/package/mcp-remote). 
-
-To connect to your MCP server from Claude Desktop, follow [Anthropic's Quickstart](https://modelcontextprotocol.io/quickstart/user) and within Claude Desktop go to Settings > Developer > Edit Config.
-
-Update with this configuration:
-
-```json
-{
-  "mcpServers": {
-    "calculator": {
-      "command": "npx",
-      "args": [
-        "mcp-remote",
-        "http://localhost:8787/sse"  // or remote-mcp-server-authless.your-account.workers.dev/sse
-      ]
-    }
-  }
-}
+```typescript
+const result = await agent.search_disclosure();
+// 예: "20240601"
 ```
 
-Restart Claude and you should see the tools become available. 
+### 2. 회사 재무 정보 검색
+
+회사의 주요 재무 정보를 검색합니다.
+
+```typescript
+const result = await agent.search_disclosure({
+  company_name: "삼성전자",
+  start_date: "20220101",
+  end_date: "20231231",
+  requested_items: ["매출액", "영업이익"]
+});
+```
+
+### 3. 세부 재무 정보 검색
+
+회사의 세부적인 재무제표 정보를 검색합니다.
+
+```typescript
+const result = await agent.search_detailed_financial_data({
+  company_name: "삼성전자",
+  statement_type: "재무상태표",
+  year: "2023",
+  is_consolidated: true
+});
+```
+
+### 4. 사업 정보 검색
+
+회사의 사업 현황 정보를 검색합니다.
+
+```typescript
+const result = await agent.search_business_information({
+  company_name: "삼성전자",
+  section_type: "사업의 개요"
+});
+```
+
+### 5. JSON 형식 재무 데이터 검색
+
+API를 통해 재무 데이터를 JSON 형식으로 제공합니다.
+
+```typescript
+const result = await agent.search_json_financial_data({
+  company_name: "삼성전자",
+  bsns_year: "2023",
+  reprt_code: "11011",  // 사업보고서
+  fs_div: "CFS"        // 연결재무제표
+});
+```
+
+## 라이선스
+
+MIT License
+
+## 주의사항
+
+- DART API 키는 일일 API 호출 제한이 있으므로 과도한 요청에 주의하세요.
+- 이 서버는 Model Context Protocol(MCP)을 기반으로 작동하며, 대규모 언어 모델(LLM)과 함께 사용할 때 최적의 성능을 발휘합니다.

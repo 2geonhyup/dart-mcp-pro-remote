@@ -11,12 +11,18 @@
 		"cf-typegen": "wrangler types"
 	},
 	"devDependencies": {
+		"@types/xml2js": "^0.4.14",
 		"typescript": "^5.8.3",
 		"wrangler": "^4.14.4"
 	},
 	"dependencies": {
-		"@modelcontextprotocol/sdk": "^1.11.1",
+		"@modelcontextprotocol/sdk": "^1.11.2",
 		"agents": "^0.0.80",
+		"axios": "^1.9.0",
+		"dotenv": "^16.5.0",
+		"fast-xml-parser": "^5.2.3",
+		"jszip": "^3.10.1",
+		"xml2js": "^0.6.2",
 		"zod": "^3.24.4"
 	}
 }
